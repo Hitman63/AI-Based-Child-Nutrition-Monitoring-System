@@ -1,0 +1,74 @@
+from flask import Flask, request, jsonify
+from tensorflow.keras.preprocessing import image
+from tensorflow.keras.models import load_model
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+import numpy as np
+import os
+
+app = Flask(__name__)
+
+MODEL_PATH = "malnutrition_cnn_model.keras"
+model = load_model(MODEL_PATH)
+
+def get_diet_plan():
+    return [
+        {"day": "Monday", "meals": "Milk + Oats, Rice + Dal + Veg, Soup + Paneer"},
+        {"day": "Tuesday", "meals": "Egg + Milk, Khichdi + Ghee, Dry fruits"},
+        {"day": "Wednesday", "meals": "Idli + Milk, Rice + Fish curry, Fruit salad"},
+        {"day": "Thursday", "meals": "Poha + Milk, Roti + Paneer + Dal, Banana shake"},
+        {"day": "Friday", "meals": "Dosa + Chutney, Rice + Dal, Veg curry"},
+        {"day": "Saturday", "meals": "Paratha + Curd, Rice + Chicken, Milkshake"},
+        {"day": "Sunday", "meals": "Upma + Milk, Veg Pulao + Curd, Fruit bowl"}
+    ]
+
+@app.route("/predict", methods=["POST"])
+def predict():
+    try:
+        file = request.files["image"]
+
+        # Save temporarily
+        path = "temp.jpg"
+        file.save(path)
+
+        # Preprocess
+        img = image.load_img(path, target_size=(224, 224))
+        img_array = image.img_to_array(img)
+        img_array = np.expand_dims(img_array, axis=0)
+        img_array = preprocess_input(img_array)
+
+        # 🔥 Predict using softmax
+        pred = model.predict(img_array)
+        class_index = np.argmax(pred)
+
+        print("Raw prediction:", pred)
+        print("Predicted class index:", class_index)
+
+        os.remove(path)
+
+        # 0 = healthy
+        # 1 = malnourished
+        if class_index == 1:
+            result = "Child is Malnourished"
+            isMalnourished = True
+            diet = get_diet_plan()
+        else:
+            result = "Child is Healthy"
+            isMalnourished = False
+            diet = "Child is healthy! No additional diet plan needed."
+
+        return jsonify({
+            "result": result,
+            "isMalnourished": isMalnourished,
+            "dietPlan": diet
+        })
+
+    except Exception as e:
+        print("Error:", e)
+        return jsonify({
+            "result": "Prediction Error",
+            "isMalnourished": False,
+            "dietPlan": "Error occurred."
+        })
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
