@@ -1,0 +1,92 @@
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras import layers, models
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+
+# ==============================
+# 🧩 Dataset Configuration
+# ==============================
+DATASET_PATH = "dataset"
+IMG_SIZE = (224, 224)
+BATCH_SIZE = 8
+EPOCHS = 15 # 15 is enough for a strong frozen feature extractor
+
+# ==============================
+# 📦 Load Dataset via ImageDataGenerator
+# ==============================
+# Using robust ImageDataGenerator to handle augmentation and dataset iteration natively
+datagen = ImageDataGenerator(
+    preprocessing_function=preprocess_input,
+    validation_split=0.2,
+    rotation_range=20,
+    horizontal_flip=True,
+    zoom_range=0.2,
+    fill_mode='nearest'
+)
+
+train_gen = datagen.flow_from_directory(
+    DATASET_PATH,
+    target_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    class_mode="categorical",
+    subset="training",
+    shuffle=True
+)
+
+val_gen = datagen.flow_from_directory(
+    DATASET_PATH,
+    target_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    class_mode="categorical",
+    subset="validation",
+    shuffle=False
+)
+
+print("\n✅ Class Indices:", train_gen.class_indices)
+
+# ==============================
+# 🧠 Transfer Learning Model
+# ==============================
+# Base model 
+base_model = MobileNetV2(
+    weights="imagenet",
+    include_top=False,
+    input_shape=(224, 224, 3)
+)
+
+# 🔥 FIX: FREEZE BASE MODEL so it doesn't overfit instantly
+base_model.trainable = False 
+
+model = models.Sequential([
+    base_model,
+    layers.GlobalAveragePooling2D(),
+    layers.Dense(128, activation="relu"),
+    layers.Dropout(0.5), # High dropout to prevent memorization
+    layers.Dense(2, activation="softmax")
+])
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+    loss="categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+model.summary()
+
+# ==============================
+# 🚀 Train Model
+# ==============================
+# Because ImageDataGenerator repeats infinitely, we calculate steps automatically
+history = model.fit(
+    train_gen,
+    validation_data=val_gen,
+    epochs=EPOCHS
+)
+
+# ==============================
+# 💾 Save Model
+# ==============================
+MODEL_PATH = "malnutrition_cnn_model.keras"
+model.save(MODEL_PATH)
+print(f"\n✅ Model saved to: {MODEL_PATH}")
